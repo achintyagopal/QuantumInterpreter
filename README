@@ -15,5 +15,5 @@ Note: There are no for loops, and the syntax is C-like, however all the typecast
 will convert the type if needed (i.e. it will add to booleans by converting each boolean into an int).
 
 In its current state, the program does not have any qubits. After writing a simple interpreter for classical features,
-qubit features will be added.  
+qubit features will be added.
 
