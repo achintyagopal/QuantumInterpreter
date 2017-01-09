@@ -6,3 +6,9 @@ class WhileNode(Node):
 
         self.condition = condition
         self.expression = expression
+
+    def get_condition(self):
+        return self.condition
+
+    def get_expression(self):
+        return self.expression

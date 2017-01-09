@@ -7,3 +7,12 @@ class IfNode(Node):
         self.condition = condition
         self.true_expr = true_expr
         self.false_expr = false_expr
+
+    def get_condition(self):
+        return self.condition
+
+    def get_true_expression(self):
+        return self.true_expr
+
+    def get_false_expression(self):
+        return self.false_expr

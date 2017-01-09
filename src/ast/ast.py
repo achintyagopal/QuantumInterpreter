@@ -23,6 +23,7 @@ from nodes.variablenode import VariableNode
 from nodes.whilenode import WhileNode
 from nodes.printnode import PrintNode
 
+
 class AST:
     def __init__(self, debug_level = 0):
         self.debug = debug_level
@@ -54,11 +55,12 @@ class AST:
         if self.debug > 0:
             print "Type:", args
 
-        if args[0] == "int":
+        arg_type = str(args[0])
+        if arg_type == "int":
             return [IntType()]
-        elif args[0] == "bool":
+        elif arg_type == "bool":
             return [BoolType()]
-        elif args[0] == "void":
+        elif arg_type == "void":
             return [VoidType()]
         else:
             raise Exception("Type not handled")
@@ -131,10 +133,12 @@ class AST:
         if self.debug > 0:
             print "Return:", args
 
-        if len(args) != 2:
+        if len(args) == 1:
+            return [ReturnNode(None)]
+        elif len(args) == 2:
+            return [ReturnNode(args[1])]
+        else:
             raise Exception("Return statement incorrect")
-
-        return [ReturnNode(args[1])]
 
     def parse_if_statement(self, text, loc, args):
 
@@ -174,7 +178,7 @@ class AST:
 
         return [CompoundNode(args)]
 
-    def parse_expresssion(self, text, loc, args):
+    def parse_expression(self, text, loc, args):
 
         if self.debug > 0:
             print "Expression:", args
@@ -284,4 +288,3 @@ class AST:
             print "Print:", args
 
         return [PrintNode(args)]
-

@@ -6,3 +6,12 @@ class ArithmeticNode(Node):
         self.arithmetic = arithmetic
         self.expression_l = expression1
         self.expression_r = expression2
+
+    def get_arithmetic_operation(self):
+        return self.arithmetic
+
+    def get_left_expression(self):
+        return self.expression_l
+
+    def get_right_expression(self):
+        return self.expression_r

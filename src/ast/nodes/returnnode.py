@@ -8,3 +8,6 @@ class ReturnNode(Node):
             self.return_value = return_value
 
         self.return_value = return_value
+
+    def get_return_value(self):
+        return self.return_value

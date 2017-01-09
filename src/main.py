@@ -2,19 +2,25 @@ import sys
 from parser import Parser
 from interpreter import Interpreter
 
+
 def test():
     p = Parser(0)
     text = """
         int main(){
             int a;
-            a = 3;
+            a = 3 + 3;
+            /* a(3);*/
+            read(a);
+
+            print(a);
+            return 0;
         }
         """
 
     p.parse_text(text)
     ast = p.get_ast()
 
-    i = Interpreter(ast)
+    i = Interpreter(ast, 0)
     i.interpret()
 
 
