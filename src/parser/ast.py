@@ -176,7 +176,7 @@ class AST:
         if self.debug > 0:
             print "Compound:", args
 
-        return [CompoundNode(args)]
+        return [CompoundNode(args[0])]
 
     def parse_expression(self, text, loc, args):
 
@@ -203,7 +203,7 @@ class AST:
     def parse_call(self, text, loc, args):
 
         if self.debug > 0:
-            print "Call:", args
+            print "Call:", args, len(args)
 
         if len(args) == 1:
             return args
@@ -218,6 +218,7 @@ class AST:
             raise Exception("Call rule incorrect")
 
         params = args[2:-1]
+
         return [CallNode(args[0], params)]
 
     def parse_not(self, text, loc, args):

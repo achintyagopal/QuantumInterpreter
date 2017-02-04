@@ -1,137 +1,18 @@
-from abc import ABCMeta, abstractmethod
 import sys
 
-from ast.types.voidtype import VoidType
-from ast.types.inttype import IntType
-from ast.types.booltype import BoolType
-from ast.types.arraytype import ArrayType
-from ast.nodes.assignnode import AssignNode
-from ast.nodes.statementsnode import StatementsNode
+from box.box import Box
+from box.intbox import IntBox
+from box.boolbox import BoolBox
+from box.arraybox import ArrayBox
 
-class Box():
-    __metaclass__ = ABCMeta
+from environment import Environment
+from scope import Scope
+from returnstatement import ReturnStatement
 
-    @abstractmethod
-    def set_value(self):
-        pass
-
-    @abstractmethod
-    def get_value(self):
-        pass
-
-class IntBox(Box):
-    def __init__(self):
-        self.value = 0
-
-    def set_value(self, value):
-        self.value = int(value)
-
-    def get_value(self):
-        return self.value
-
-    def __str__(self):
-        return str(self.value)
-
-
-class BoolBox(Box):
-    def __init__(self):
-        self.value = False
-
-    def set_value(self, value):
-        self.value = bool(value)
-
-    def get_value(self):
-        return self.value
-
-    def __str__(self):
-        return str(self.value)
-
-
-class ArrayBox(Box):
-
-    def __init__(self, type, size):
-        self.values = []
-        for _ in range(size):
-            if type.__class__.__name__ == "IntType":
-                self.values.append(IntBox())
-            elif type.__class__.__name__ == "BoolType":
-                self.values.append(BoolBox())
-            else:
-                raise Exception("Could not create array box")
-
-    def set_value(self, array_box):
-        self.values = array_box.values
-
-    def get_value(self, index):
-        return self.values[index]
-
-    def __str__(self):
-        string = "["
-        i = 0
-        for value in self.values:
-            if i == 0:
-                string += value
-            else:
-                string += ", " + str(value)
-        string += "]"
-        return string
-
-    def __iter__(self):
-        return iter(self.values)
-
-
-class Scope():
-    def __init__(self, old_scope = None):
-        self.variables = {}
-        self.previous = old_scope
-
-    def add_variable(self, name, variable_type):
-        if self.variables.get(name) is not None:
-            raise Exception("Variable of name " + name + " already exists")
-
-        if variable_type.__class__.__name__ == "IntType":
-            self.variables[name] = IntBox()
-        elif variable_type.__class__.__name__ == "BoolType":
-            self.variables[name] = BoolBox()
-        elif variable_type.__class__.__name__ == "ArrayType":
-            self.variables[name] = ArrayBox(variable_type.get_type(), variable_type.get_size())
-        else:
-            raise Exception("Invalid type")
-
-    def get_variable(self, variable_name):
-
-        box = self.variables.get(variable_name)
-        if box is not None:
-            return box
-
-        if self.previous is not None:
-            return self.previous.get_variable(variable_name)
-        else:
-            raise Exception("Variable " + variable_name + " does not exist")
-
-    def previous_scope(self):
-        return self.previous
-
-
-class Environment():
-    def __init__(self):
-        self.current_scope = Scope()
-
-    def new_scope(self):
-        self.current_scope = Scope(self.current_scope)
-
-    def remove_scope(self):
-        self.current_scope = self.current_scope.previous_scope()
-
-    def add_variable(self, variable_name, variable_type):
-        self.current_scope.add_variable(variable_name, variable_type)
-
-    def get_variable(self, variable_name):
-        return self.current_scope.get_variable(variable_name)
-
-
-class ReturnStatement(Exception):
-    pass
+from ..parser.types.voidtype import VoidType
+from ..parser.types.inttype import IntType
+from ..parser.types.booltype import BoolType
+from ..parser.types.arraytype import ArrayType
 
 
 class Interpreter():
@@ -140,9 +21,14 @@ class Interpreter():
         self.functions = {}
         self.stack = []
         self.env = Environment()
+        self.environments = [self.env]
         self.function_locs = []
         self.debug = debug
         self.built_in_functions = ("print", "read")
+        self.built_in_functions_map = {
+            "print": self.__print,
+            "read": self.__read
+        }
 
     def interpret(self):
 
@@ -212,11 +98,11 @@ class Interpreter():
 
         self.__interpret(node.get_left_expression())
         left = self.stack.pop()
-        left = self.__typecast_int(left)
+        left = self.__get_int(left)
 
         self.__interpret(node.get_right_expression())
         right = self.stack.pop()
-        right = self.__typecast_int(right)
+        right = self.__get_int(right)
 
         arithmetic = node.get_arithmetic_operation()
 
@@ -240,33 +126,67 @@ class Interpreter():
         self.__interpret(node.get_right())
         value_box = self.stack.pop()
 
-        if isinstance(variable_box, (IntBox, BoolBox)):
-            if isinstance(value_box, (IntBox, BoolBox)):
-                variable_box.set_value(value_box.get_value())
-            elif isinstance(value_box, (int, bool)):
-                variable_box.set_value(value_box)
-            else:
-                raise Exception("Can only assign an int or bool")
-        elif isinstance(variable_box, ArrayBox):
-            if isinstance(value_box, ArrayBox):
-                variable_box.set_value(value_box)
-            else:
-                raise Exception("Mismatch types")
-        else:
-            raise Exception("Can only assign to int or bool variable")
+        self.__assign_box(variable_box, value_box)
 
         self.stack.append(variable_box)
+
+    def __assign_box(self, variable_box, value_box):
+        value = self.__typecast(variable_box, value_box)
+        variable_box.set_value(value)
+
+    def __typecast(self, variable_box, value_box):
+        if isinstance(variable_box, IntBox):
+            return self.__typecast_int(value_box)
+        elif isinstance(variable_box, BoolBox):
+            return self.__typecast_bool(value_box)
+        elif isinstance(variable_box, ArrayBox):
+            if self.__type_str(variable_box) == self.__type_str(value_box):
+                return value_box
+            else:
+                raise Exception("Unable to typecast to correct array type")
+        else:
+            raise Exception("Unrecognized type")
+
+    @staticmethod
+    def __typecast_bool(value):
+        if isinstance(value, ArrayBox):
+            return True
+        elif isinstance(value, (int, bool)):
+            return bool(value)
+        elif isinstance(value, (IntBox, BoolBox)):
+            return bool(value.get_value())
+        else:
+            raise Exception("Unable to typecast into boolean")
+
+    @staticmethod
+    def __typecast_int(value):
+        if isinstance(value, (int, bool)):
+            return int(value)
+        elif isinstance(value, (IntBox, BoolBox)):
+            return int(value.get_value())
+        else:
+            raise Exception("Unable to typecast into int")
+
+    @staticmethod
+    def __typecast_array(value, variable):
+
+        if not isinstance(value, ArrayBox):
+            raise Exception("Excepted array type")
+
+        if value.get_size() != variable.get_size():
+            raise Exception("Incorrect array size")
+
+        return value
 
     def __bool(self, node):
         self.stack.append(node.get_value())
 
     def __built_in_functions(self, node):
-        if node.get_function_name().get_value() == "print":
-            self.__print(node.get_params())
-        elif node.get_function_name().get_value() == "read":
-            self.__read(node.get_params())
-        else:
+        func = self.built_in_functions_map.get(node.get_function_name().get_value())
+        if func is None:
             raise Exception("Code for built in function not written")
+
+        func(node.get_params())
 
     def __print(self, params):
         for param in params:
@@ -276,8 +196,6 @@ class Interpreter():
     def __read(self, params):
 
         for i in range(len(params)):
-            # param_var = params[i].get_variable_name()
-            # param_type = params[i].get_type()
 
             self.__interpret(params[i])
             param_box = self.stack.pop()
@@ -327,75 +245,74 @@ class Interpreter():
 
     def __call(self, node):
 
-        # find which function
-        function_keys = []
         function_name = node.get_function_name().get_value()
         if function_name in self.built_in_functions:
             self.__built_in_functions(node)
             return
 
-        for key, value in self.functions.iteritems():
+        interpreted_params = []
+        for param in node.get_params():
+            self.__interpret(param)
+            interpreted_params.append(self.stack.pop())
+            function_name += "_" + self.__type_str(interpreted_params[-1])
 
-            if key == function_name:
-                function_keys.append(value)
+        function = self.functions.get(function_name)
+        if function is None:
+            raise Exception("Could not match function of type " + function_name)
 
-        if len(function_keys) == 0:
-            raise Exception("Function " + function_name + " does not exist")
-        elif len(function_keys) == 1:
-            function = function_keys[0]
-        else:
-            new_function_keys = []
-            for fn in function_keys:
-                if fn.get_params().get_size() == node.get_params().get_size():
-                    new_function_keys.append(fn)
+        self.env = Environment()
+        self.environments.append(self.env)
 
-            if len(new_function_keys) == 1:
-                function = new_function_keys[0]
-            else:
-                raise Exception("Could not resolve function")
-
-        self.env.new_scope()
-
-        # create new variable nodes
-        self.__interpret(function.get_params())
-
-        # assign each node
-        self.__set_params(function.get_params(), node.get_params())
+        # self.__interpret(function.get_params())
+        self.__set_params(function.get_params().get_params(), interpreted_params)
 
         # run function
         self.__interpret(function)
 
+        self.environments.pop()
+        self.env = self.environments[-1]
+
         # check if top of stack is return statement(r)
-        if isinstance(self.stack[-1], ReturnStatement):
-            return_val = self.stack.pop().message
+        if len(self.stack) != 0 and isinstance(self.stack[-1], ReturnStatement):
+            return_val = self.stack.pop().args[0]
 
             # typecast
             if isinstance(function.get_return_type(), VoidType):
-                if return_val is None:
-                    value = None
-                else:
+                if return_val is not None:
+                    raise Exception("Incorrect return type")
+            elif isinstance(function.get_return_type(), IntType):
+                if not isinstance(return_val, (int, IntBox)):
+                    raise Exception("Incorrect return type")
+            elif isinstance(function.get_return_type(), BoolType):
+                if not isinstance(return_val, (BoolBox, bool)):
+                    raise Exception("Incorrect return type")
+            elif isinstance(function.get_return_type(), ArrayType):
+                if not isinstance(return_val, ArrayBox):
                     raise Exception("Incorrect return type")
 
-            elif isinstance(function.get_return_type(), IntType):
-                value = self.__typecast_int(return_val)
-            elif isinstance(function.get_return_type(), BoolType):
-                value = self.__typecast_bool(return_val)
-            elif isinstance(function.get_return_type(), ArrayType):
-                value = self.__typecast_array(return_val)
-
-            self.stack.append(value)
+            self.stack.append(return_val)
         else:
             if str(function.get_return_type()) != "void":
                 raise Exception("Missing return statement")
 
+    def __type_str(self, value):
+        if isinstance(value, (int, IntBox)):
+            return "int"
+        elif isinstance(value, (bool, BoolBox)):
+            return "bool"
+        elif isinstance(value, ArrayBox):
+            return "array_" + self.__type_str(value.get_value(0))
+        else:
+            raise Exception("Unrecognized type")
+
     def __set_params(self, params, param_exprs):
-        statements = []
         for i in range(len(params)):
             param_expr = param_exprs[i]
             param_var = params[i].get_variable_name()
-            statements.append(AssignNode(param_var, param_expr))
-        statements = StatementsNode(statements)
-        self.__interpret(statements)
+            self.__interpret(params[i])
+            self.__interpret(param_var)
+            variable_box = self.stack.pop()
+            self.__assign_box(variable_box, param_expr)
 
     def __compound(self, node):
         self.env.new_scope()
@@ -404,11 +321,11 @@ class Interpreter():
     def __condition(self, node):
         self.__interpret(node.get_left_expression())
         left = self.stack.pop()
-        left = self.__typecast_int(left)
+        left = self.__get_int(left)
 
         self.__interpret(node.get_right_expression())
         right = self.stack.pop()
-        right = self.__typecast_int(right)
+        right = self.__get_int(right)
 
         comparison = node.get_comparison()
 
@@ -435,30 +352,31 @@ class Interpreter():
         except ReturnStatement as r:
             loc = self.function_locs.pop()
             self.stack = self.stack[:loc]
-            self.stack.append(ReturnStatement(r))
+            self.stack.append(r)
 
     def __if(self, node):
 
         self.__interpret(node.get_condition())
         conditional = self.stack.pop()
+        conditional = self.__get_bool(conditional)
 
-        condition_value = self.__typecast_bool(conditional)
-
-        if condition_value:
+        if conditional:
             self.__interpret(node.get_true_expression())
         else:
-            self.__interpret(node.get_false_expression())
+            false_expr = node.get_false_expression()
+            if false_expr is not None:
+                self.__interpret(node.get_false_expression())
 
     def __index(self, node):
         self.__interpret(node.get_name())
         array_box = self.stack.pop()
+        array_box = self.__get_array(array_box)
 
         self.__interpret(node.get_index())
         value = self.stack.pop()
+        value = self.__get_int(value)
 
-        value = self.__typecast_int(value)
-        array_box = self.__typecast_array(array_box)
-        self.stack.append(array_box.get_value(int(value)))
+        self.stack.append(array_box.get_value(value))
 
     def __int(self, node):
         self.stack.append(node.get_value())
@@ -466,22 +384,22 @@ class Interpreter():
     def __logic(self, node):
         self.__interpret(node.get_left_expression())
         left = self.stack.pop()
-        left = self.__typecast_int(left)
+        left = self.__get_int(left)
 
         logic = node.get_logic_operation()
 
         # short circuit operations
-        if logic == "&&" and left == False:
+        if logic == "&&" and left is False:
             self.stack.append(False)
             return
 
-        if logic == "||" and left == True:
+        if logic == "||" and left is True:
             self.stack.append(True)
             return
 
         self.__interpret(node.get_right_expression())
         right = self.stack.pop()
-        right = self.__typecast_int(right)
+        right = self.__get_int(right)
 
         if logic == "&&":
             self.stack.append(left and right)
@@ -497,12 +415,8 @@ class Interpreter():
         if node_type.__class__.__name__ == "ArrayType":
             self.__interpret(node_type.get_size())
             box = self.stack.pop()
-            if isinstance(BoolBox, IntBox):
-                node_type.set_size(box.get_value())
-            elif isinstance(int, bool):
-                node_type.set_size(box.get_value())
-            else:
-                raise Exception("Cannot create array of non-int size")
+            box = self.__get_int(box)
+            node_type.set_size(box)
 
         self.env.add_variable(variable_name, node_type)
 
@@ -510,35 +424,29 @@ class Interpreter():
 
         self.__interpret(node.get_expression())
         value = self.stack.pop()
-        self.stack.append(not self.__typecast_bool(value))
+        self.stack.append(not self.__get_bool(value))
 
     @staticmethod
-    def __typecast_bool(value):
-        if isinstance(value, ArrayBox):
-            return True
-        elif isinstance(value, (int, bool)):
-            return bool(value)
-        elif isinstance(value, (IntBox, BoolBox)):
-            return bool(value.get_value())
-        else:
-            raise Exception("Unable to typecast into boolean")
-
-    @staticmethod
-    def __typecast_int(value):
-        if isinstance(value, (int, bool)):
-            return int(value)
-        elif isinstance(value, (IntBox, BoolBox)):
-            return int(value.get_value())
-        else:
-            raise Exception("Unable to typecast into int")
-
-    @staticmethod
-    def __typecast_array(value):
-
-        if not isinstance(value, ArrayBox):
-            raise Exception("Excepted array type")
-
+    def __get_int(value):
+        if isinstance(value, IntBox):
+            return value.get_value()
+        elif not isinstance(value, int):
+            raise Exception("Expected type int")
         return value
+
+    @staticmethod
+    def __get_bool(value):
+        if isinstance(value, BoolBox):
+            return value.get_value()
+        elif not isinstance(value, bool):
+            raise Exception("Expected type bool")
+        return value
+
+    @staticmethod
+    def __get_array(value):
+        if isinstance(value, ArrayBox):
+            return value
+        raise Exception("Expected type array")
 
     def __params(self, node):
         for param in node.get_params():
@@ -569,7 +477,9 @@ class Interpreter():
 
         self.__interpret(condition)
         conditional_value = self.stack.pop()
+        conditional_value = self.__get_bool(conditional_value)
         while conditional_value:
             self.__interpret(expression)
             self.__interpret(condition)
             conditional_value = self.stack.pop()
+            conditional_value = self.__get_bool(conditional_value)

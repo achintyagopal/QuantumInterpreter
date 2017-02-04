@@ -1,6 +1,6 @@
 from pyparsing import *
 
-from ast.ast import AST
+from ast import AST
 
 
 class Parser():
@@ -48,7 +48,7 @@ class Parser():
         while_statement = (WHILE - LPAR - expression - RPAR - statement)
         return_statement = (RETURN - Optional(expression) - SEMI)
 
-        relop = oneOf("== != > < <= >= =")
+        relop = oneOf("== += -= *= /= != > < <= >= =")
         addop = oneOf("+ - ||")
         mulop = oneOf("* / % &&")
 
@@ -57,11 +57,12 @@ class Parser():
             integer
             | boolean
             | (NOT + factor).setParseAction(self.ast.parse_not)
+            | LPAR - expression - RPAR
             | (variable + Optional("(" + Optional(delimitedList(expression)) - ")")).setParseAction(self.ast.parse_call)
-            | LPAR - expression - RPAR)
-        term = (factor + ZeroOrMore(mulop + factor)).setParseAction(self.ast.parse_term)
-        simple_expression = (Optional(PLUS | MINUS) + term + ZeroOrMore(addop - term)).setParseAction(self.ast.parse_simple_expression)
-        expression << (simple_expression + ZeroOrMore(relop + simple_expression)).setParseAction(self.ast.parse_expression)
+            )
+        term = (factor - ZeroOrMore(mulop - factor)).setParseAction(self.ast.parse_term)
+        simple_expression = (Optional(PLUS | MINUS) + term - ZeroOrMore(addop - term)).setParseAction(self.ast.parse_simple_expression)
+        expression << (simple_expression - ZeroOrMore(relop - simple_expression)).setParseAction(self.ast.parse_expression)
 
         statement << Group(
             if_statement.setParseAction(self.ast.parse_if_statement)

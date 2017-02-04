@@ -1,0 +1,8 @@
+int array_op(int size, int b[size]){
+    return 3;
+}
+
+int main() {
+    int a[3];
+    print(array_op(3, a));
+}

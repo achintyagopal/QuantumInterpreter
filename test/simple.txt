@@ -1,0 +1,10 @@
+int main(){
+    int a;
+    /*bool a;*/
+    a = 3 + 3;
+    /* a(3);*/
+    read(a);
+
+    print(a + 3);
+    return 0;
+}

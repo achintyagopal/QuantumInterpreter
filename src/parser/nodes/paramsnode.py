@@ -14,8 +14,8 @@ class ParamsNode(Node):
             param_str += "_" + str(param.type)
         return param_str
 
-    def get_params():
+    def get_params(self):
         return self.param_list
 
-    def get_size():
+    def get_size(self):
         return len(self.param_list)
